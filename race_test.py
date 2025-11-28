@@ -9,11 +9,11 @@ import requests
 
 load_dotenv()
 
-# ================== НАСТРОЙКИ ==================
-
 URL = os.getenv("URL")
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
-# Тело запроса - пример перевода денег / бронирования / изменения ресурс
+
+#Body if needee
+#BODY = os.getenv("BODY")
 
 HEADERS = {
     "Content-Type": "application/json",
@@ -21,23 +21,23 @@ HEADERS = {
     "Cache-Control": "no-cache"
 }
 
-# Кол-во одновременных запросов
+#requests count
 CONCURRENCY = 10
 
-# Сколько раз каждый поток отправит запрос
+#requests per thread
 REQUESTS_PER_THREAD = 1
 
-# Печатать ли тело ответа
+#Print response snippet if needed
 PRINT_RESPONSE_SNIPPET = True
 
 def make_request(start_barrier, results, thread_id):
     """
-    Функция, которую будет выполнять каждый поток:
-    - ждёт общей точки старта через barrier
-    - шлёт N запросов подряд
-    - складывает результаты в shared-список
+    Function that will be executed by each thread:
+    - waits for a common start point through barrier
+    - sends N requests in a row
+    - saves results to shared list
     """
-    # Ждем, пока все потоки будут готовы
+    # Wait for all threads to be ready
     start_barrier.wait()
 
     for i in range(REQUESTS_PER_THREAD):
@@ -51,13 +51,13 @@ def make_request(start_barrier, results, thread_id):
 
             status = response.status_code
 
-            # Попробуем прочитать ответ (может быть json, может нет)
+            # Try to read the response (can be json, can be text)
             try:
                 data = response.json()
             except ValueError:
                 data = response.text
 
-            # Сохраняем результат
+            # Save result
             results.append({
                 "thread": thread_id,
                 "req_index": i,
@@ -66,7 +66,7 @@ def make_request(start_barrier, results, thread_id):
             })
 
             if PRINT_RESPONSE_SNIPPET:
-                # печатаем кратко
+                # Print snippet if needed
                 print(f"[{thread_id}:{i}] status={status}, body={str(data)[:200]}")
 
         except Exception as e:
@@ -80,36 +80,36 @@ def make_request(start_barrier, results, thread_id):
 
 
 def main():
-    # Barrier ждёт, пока все потоки дойдут до него, затем отпускает разом
-    start_barrier = threading.Barrier(CONCURRENCY + 1)  # +1 = главный поток
+    # Barrier waits for all threads to reach it, then releases them all at once
+    start_barrier = threading.Barrier(CONCURRENCY + 1)  # +1 = main thread
 
     threads = []
-    results = []  # shared-список, в который потоки будут писать результаты
+    results = []  # shared list, where threads will write results
 
-    # Стартуем потоки
+    # Start threads
     for t_id in range(CONCURRENCY):
         t = threading.Thread(target=make_request, args=(start_barrier, results, t_id))
         t.start()
         threads.append(t)
 
-    print(f"Готово {CONCURRENCY} потоков. Стартуем все одновременно через barrier...")
+    print(f"Ready {CONCURRENCY} threads. Starting all at once through barrier...")
     time.sleep(1)
 
-    # Отпускаем все потоки одновременно
+    # Release all threads at once
     start_barrier.wait()
 
-    # Ждём окончания всех потоков
+    # Wait for all threads to finish
     for t in threads:
         t.join()
 
-    print("\n=== РЕЗУЛЬТАТЫ ===")
+    print("\n=== RESULTS ===")
 
-    # Сводка по статус-кодам
+    #Summary by status codes
     statuses = Counter(r["status"] for r in results)
-    print("Статусы ответов:", dict(statuses))
+    print("Status codes:", dict(statuses))
 
-    # При желании можно посмотреть подозрительные ответы
-    print("\nПримеры не-200 ответов:")
+    #If desired, you can view suspicious responses
+    print("\nExamples of non-200 responses:")
     for r in results:
         if r["status"] != 200:
             print(f"- thread={r['thread']}, req={r['req_index']}, "
